@@ -202,10 +202,11 @@ export interface WorldCallbacks {
   onHitMarker: (crit: boolean) => void;
   onLoopFlash: () => void;
   onFirstMoveOrAim: (moved: boolean, aimed: boolean) => void;
-  onRelayShot?: () => void;
-  onTwinSynced?: () => void;
-  onSwitchActivated?: (byEcho: boolean) => void;
+  onRelayShot?: (multiplier: number) => void;
+  onTwinSynced?: (multiplier: number) => void;
+  onSwitchActivated?: (byEcho: boolean, justOpened: boolean) => void;
   onDevourerSlain?: () => void;
+  onConvergence?: () => void;
   onSuppressedChange?: (suppressedIds: string[]) => void;
 }
 
@@ -2035,13 +2036,6 @@ export class EchoWorldEngine {
       if (dSq <= 1.45 * 1.45) {
         relayed = true;
         this.spawnRing(this.poseScratch.x, this.poseScratch.y - 0.2, this.poseScratch.z, 1.8, 1.0, 0.85, 0.36);
-        this.emitWorldPopup(
-          this.poseScratch.x,
-          this.poseScratch.y + 0.65,
-          this.poseScratch.z,
-          `RELAIS ×${this.stats.relayMultiplier.toFixed(1)}`,
-          'crit',
-        );
         break;
       }
     }
@@ -2051,7 +2045,7 @@ export class EchoWorldEngine {
     const effectiveRicochet = this.stats.ricochetCount + (relayed ? 1 : 0);
     if (relayed) {
       this.sound.playRelayShot();
-      this.callbacks.onRelayShot?.();
+      this.callbacks.onRelayShot?.(this.stats.relayMultiplier);
     }
 
     // Check Chrono-Switch hit
@@ -2066,14 +2060,14 @@ export class EchoWorldEngine {
       const pz = camPos.z + _v1.z * proj;
       const dSq = (px - sw.x) ** 2 + (py - sw.y) ** 2 + (pz - sw.z) ** 2;
       if (dSq <= 1.05 * 1.05) {
+        const wasClosed = this.vaultTimer <= 0;
         this.vaultTimer = 8.5;
         sw.flash = 1;
         this.spawnBeam(_v3.x, _v3.y, _v3.z, sw.x, sw.y, sw.z, false, true);
         this.spawnRing(sw.x, sw.y, sw.z, 2.2, 1, 0.82, 0.35);
-        this.emitWorldPopup(sw.x, sw.y + 0.7, sw.z, 'SANCTUAIRE OUVERT', 'crit');
         this.sound.playSwitchToggle(true);
         this.callbacks.onHitMarker(true);
-        this.callbacks.onSwitchActivated?.(false);
+        this.callbacks.onSwitchActivated?.(false, wasClosed);
         return;
       }
     }
@@ -2251,7 +2245,7 @@ export class EchoWorldEngine {
           this.dashCooldownTimer = 0;
           this.sound.playDash(true);
           this.spawnRing(this.playerX, this.playerY + 0.25, this.playerZ, 2.8, 0.22, 0.91, 0.88);
-          this.emitWorldPopup(this.playerX, this.playerY + 1.9, this.playerZ, 'CONVERGENCE !', 'crit');
+          this.callbacks.onConvergence?.();
           break;
         }
       }
@@ -2286,18 +2280,11 @@ export class EchoWorldEngine {
 
       if (syncedOnSelf || syncedOnPartner) {
         this.callbacks.onHitMarker(true);
-        this.emitWorldPopup(
-          hx,
-          hy + 0.55,
-          hz,
-          `SYNCHRO ×${this.stats.twinMult.toFixed(1)}`,
-          'crit',
-        );
         this.shatterGeodeEntity(g, this.stats.twinMult, true);
         if (partner && partner.active) {
           this.shatterGeodeEntity(partner, this.stats.twinMult, true);
         }
-        this.callbacks.onTwinSynced?.();
+        this.callbacks.onTwinSynced?.(this.stats.twinMult);
         return;
       }
 
@@ -2308,7 +2295,6 @@ export class EchoWorldEngine {
       g.crackStage = 1;
       if (shooterTag === 'player') {
         this.callbacks.onHitMarker(false);
-        this.emitWorldPopup(hx, hy + 0.35, hz, 'Synchro...', 'damage');
         this.sound.playHit(1);
       }
       this.spawnRing(g.x, g.y + 0.25, g.z, 1.9, 1.0, 0.37, 0.7);
@@ -2564,13 +2550,14 @@ export class EchoWorldEngine {
                 (s.oy + s.dy * proj - sw.y) ** 2 +
                 (s.oz + s.dz * proj - sw.z) ** 2;
               if (dSq <= 1.25 * 1.25) {
+                const wasClosed = this.vaultTimer <= 0;
                 this.vaultTimer = 8.5;
                 sw.flash = 1;
                 targetX = sw.x;
                 targetY = sw.y;
                 targetZ = sw.z;
                 bestDist = proj;
-                this.callbacks.onSwitchActivated?.(true);
+                this.callbacks.onSwitchActivated?.(true, wasClosed);
               }
             }
           }
@@ -2955,7 +2942,9 @@ export class EchoWorldEngine {
       if (_v1.z >= -1 && _v1.z <= 1) {
         const sx = ((_v1.x + 1) * 0.5) * w;
         const sy = ((-_v1.y + 1) * 0.5) * h;
-        if (sx >= 20 && sx <= w - 20 && sy >= 20 && sy <= h - 20) {
+        const distFromReticle = Math.hypot(sx - w * 0.5, sy - h * 0.5);
+        const reticleExclusion = Math.max(96, Math.min(w, h) * 0.24);
+        if (sx >= 20 && sx <= w - 20 && sy >= 20 && sy <= h - 20 && distFromReticle >= reticleExclusion) {
           echoLabels.push({
             id: echo.id,
             x: sx,
@@ -3009,6 +2998,9 @@ export class EchoWorldEngine {
     const sx = ((_v1.x + 1) * 0.5) * w;
     const sy = ((-_v1.y + 1) * 0.5) * h;
     if (sx < 16 || sx > w - 16 || sy < 16 || sy > h - 16) return;
+    const distFromReticle = Math.hypot(sx - w * 0.5, sy - h * 0.5);
+    const centerClearRadius = Math.max(108, Math.min(w, h) * 0.26);
+    if (distFromReticle < centerClearRadius) return;
     this.callbacks.onFloatingPopup({
       id: this.nextPopupId++,
       x: sx,

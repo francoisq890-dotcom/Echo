@@ -12,6 +12,7 @@ import {
 } from '../game/economy';
 import { runEconomySimulation } from '../game/simulation';
 import type { JoystickVisualState } from '../game/controls';
+import type { NotificationItem } from '../game/notifications';
 import type { FloatingPopupEvent, WorldHudSnapshot } from '../game/world';
 
 interface GameHUDProps {
@@ -26,7 +27,7 @@ interface GameHUDProps {
   prestigeMult: number;
   tutorialStep: TutorialStepId;
   tutorialProgressText?: string;
-  echoBanner: { text: string; tone: 'added' | 'replaced' | 'discarded' } | null;
+  activeNotification: NotificationItem | null;
   hud: WorldHudSnapshot;
   popups: FloatingPopupEvent[];
   hitMarker: 'none' | 'hit' | 'crit';
@@ -55,7 +56,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   prestigeMult,
   tutorialStep,
   tutorialProgressText,
-  echoBanner,
+  activeNotification,
   hud,
   popups,
   hitMarker,
@@ -127,14 +128,22 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     ? (simReportRef.current ?? (simReportRef.current = runEconomySimulation()))
     : null;
 
+  const notifStyle =
+    activeNotification?.tone === 'crimson'
+      ? 'border-[#ff4d9e]/75 text-[#ff9ec7]'
+      : activeNotification?.tone === 'coral'
+        ? 'border-[#e66b4c]/65 text-[#ffb199]'
+        : activeNotification?.tone === 'gold'
+          ? 'border-[#ffd15c]/65 text-[#ffd15c]'
+          : 'border-[#38e8e1]/65 text-[#7df9f3]';
+
+  const notifBg =
+    activeNotification?.tone === 'crimson'
+      ? 'rgba(62, 14, 40, 0.9)'
+      : 'rgba(26, 15, 40, 0.86)';
+
   return (
-    <div
-      className="fixed inset-0 z-10 pointer-events-none overflow-hidden"
-      style={{
-        padding:
-          'max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left))',
-      }}
-    >
+    <div className="fixed inset-0 z-10 pointer-events-none overflow-hidden hud-safe-inset">
       {/* Loop Rewind Flash */}
       {loopFlash && (
         <div
@@ -146,34 +155,34 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         />
       )}
 
-      {/* Projected 3D-to-2D Echo "+X/s" Labels */}
+      {/* Projected 3D-to-2D Echo "+X/s" Labels (discrete & hidden near reticle) */}
       {hud.echoLabels.map((lbl) => (
         <div
           key={lbl.id}
-          className={`fixed -translate-x-1/2 -translate-y-full pointer-events-none text-xs font-bold tabular-nums hud-text-shadow px-1.5 py-0.5 rounded ${
+          className={`fixed -translate-x-1/2 -translate-y-full pointer-events-none text-[9px] desktop:text-[11px] font-semibold tabular-nums hud-text-shadow px-1 py-px rounded opacity-85 ${
             lbl.suppressed ? 'text-[#ff70b3]' : 'text-[#38e8e1]'
           }`}
           style={{
             left: `${lbl.x}px`,
             top: `${lbl.y}px`,
-            backgroundColor: 'rgba(32, 16, 46, 0.62)',
+            backgroundColor: 'rgba(32, 16, 46, 0.45)',
           }}
         >
           {lbl.rateText}
-          {lbl.suppressed ? ' (-70%)' : ''}
+          {lbl.suppressed ? ' -70%' : ''}
         </div>
       ))}
 
-      {/* Floating Damage & Golden Shard Popups */}
+      {/* Floating Damage & Golden Shard Popups (outside center reticle clear zone) */}
       {popups.map((p) => (
         <div
           key={p.id}
           className={`fixed pointer-events-none font-extrabold tabular-nums hud-text-shadow floating-dmg ${
             p.kind === 'shard'
-              ? 'text-base sm:text-lg text-[#ffd15c]'
+              ? 'text-sm desktop:text-lg text-[#ffd15c]'
               : p.kind === 'crit'
-                ? 'text-base text-[#ffe599]'
-                : 'text-sm text-[#f7efe6]'
+                ? 'text-sm desktop:text-base text-[#ffe599]'
+                : 'text-xs desktop:text-sm text-[#f7efe6]'
           }`}
           style={{ left: `${p.x}px`, top: `${p.y}px` }}
         >
@@ -181,19 +190,19 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       ))}
 
-      {/* Top Bar Corners (Compact, >= 85% clear center) */}
-      <div className="relative flex items-start justify-between gap-3">
-        {/* Top-Left: Shards, Income Rate & Next Goal ETA (5 taps opens hidden Debug Panel) */}
-        <div className="flex flex-col gap-1.5 pointer-events-auto">
+      {/* Top Bar Corners (Compact on mobile ~25% smaller, uncluttered center) */}
+      <div className="relative flex items-start justify-between gap-2 desktop:gap-3">
+        {/* Top-Left: Shards, Income Rate & Single Objective (5 taps opens hidden Debug Panel) */}
+        <div className="flex flex-col gap-1 desktop:gap-1.5 pointer-events-auto">
           <div
             onClick={handleShardsTap}
             role="button"
             tabIndex={-1}
             aria-label="Compteur d'éclats"
-            className="flex items-center gap-3 px-3.5 py-2 rounded-lg border border-[#ffd15c]/30 cursor-pointer select-none"
+            className="flex items-center gap-2 desktop:gap-3 px-2.5 py-1.5 desktop:px-3.5 desktop:py-2 rounded-lg border border-[#ffd15c]/30 cursor-pointer select-none"
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.8)' }}
           >
-            <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="w-4 h-4 desktop:w-6 desktop:h-6 shrink-0" aria-hidden="true">
               <polygon
                 points="12,2 19,11 12,22 5,11"
                 fill="#ffd15c"
@@ -206,11 +215,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <div>
               <div
                 data-testid="hud-shards"
-                className="text-xl sm:text-2xl font-extrabold leading-none text-[#ffd15c] tabular-nums hud-text-shadow"
+                className="text-base desktop:text-2xl font-extrabold leading-none text-[#ffd15c] tabular-nums hud-text-shadow"
               >
                 {formatShards(shards)}
               </div>
-              <div className="mt-1 flex items-center gap-2 text-xs text-[#f7efe6]/80 tabular-nums">
+              <div className="mt-0.5 desktop:mt-1 flex items-center gap-1.5 desktop:gap-2 text-[10px] desktop:text-xs text-[#f7efe6]/80 tabular-nums">
                 <span data-testid="hud-rate" className="text-[#38e8e1] font-semibold">
                   +{formatShards(totalRatePerSec)}/s
                 </span>
@@ -224,21 +233,36 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </div>
           </div>
 
-          {/* Next Reachable Goal + ETA */}
+          {/* Single Objective at a Time, in One Single Place */}
           <div
-            data-testid="hud-next-goal"
-            className="px-3 py-1 rounded-md border border-[#f7efe6]/15 text-[11px] sm:text-xs font-semibold tabular-nums text-[#f7efe6]/90 hud-text-shadow"
+            data-testid="hud-objective"
+            className="px-2 py-0.5 desktop:px-3 desktop:py-1 rounded-md border border-[#f7efe6]/15 text-[10px] desktop:text-xs font-semibold tabular-nums text-[#f7efe6]/90 hud-text-shadow max-w-[180px] desktop:max-w-[260px]"
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.74)' }}
           >
-            {nextUp ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate max-w-[165px] sm:max-w-[210px]">
+            {tutorialStep !== 'done' && tutorialText ? (
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="truncate">{tutorialText}</span>
+                {tutorialProgressText ? (
+                  <span className="text-[#ffd15c] shrink-0">{tutorialProgressText}</span>
+                ) : tutorialStep === 'reach_prestige' ? (
+                  <span className="text-[#ffd15c] shrink-0">
+                    {prestigePot.canPrestige
+                      ? 'Prêt !'
+                      : Number.isFinite(prestigeEtaSec)
+                        ? formatDurationCompact(prestigeEtaSec)
+                        : '—'}
+                  </span>
+                ) : null}
+              </div>
+            ) : nextUp ? (
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="truncate">
                   Objectif : <span className="text-[#ffd15c]">{nextUp.name}</span>
                 </span>
                 <span
-                  className={
+                  className={`shrink-0 ${
                     nextUp.missing <= 0 ? 'text-[#38e8e1] font-extrabold' : 'text-[#f7efe6]/75'
-                  }
+                  }`}
                 >
                   {nextUp.missing <= 0
                     ? 'Prêt !'
@@ -248,9 +272,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 </span>
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-2">
-                <span>Effondrement :</span>
-                <span className="text-[#ffd15c]">
+              <div className="flex items-center justify-between gap-1.5">
+                <span className="truncate">Effondrement</span>
+                <span className="text-[#ffd15c] shrink-0">
                   {prestigePot.canPrestige
                     ? 'Prêt !'
                     : Number.isFinite(prestigeEtaSec)
@@ -262,65 +286,29 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </div>
         </div>
 
-        {/* Top-Center: Tutorial Objective, Devourer Alert, Vault Timer & Echo Result Toast */}
-        <div className="flex flex-col items-center gap-1.5 max-w-xs sm:max-w-md text-center">
-          {tutorialStep !== 'done' && tutorialText && (
+        {/* Top-Center: Single Notification Queue Slot (1 at a time, 2s each, never overlapping) */}
+        <div className="flex justify-center flex-1 px-1 pointer-events-none">
+          {activeNotification && (
             <div
-              data-testid="tutorial-banner"
-              className="px-4 py-1.5 rounded-lg border border-[#38e8e1]/45 text-xs sm:text-sm font-semibold text-[#f7efe6] hud-text-shadow"
-              style={{ backgroundColor: 'rgba(34, 18, 48, 0.84)' }}
+              key={activeNotification.id}
+              data-testid="hud-notification"
+              className={`px-3 py-1 desktop:px-4 desktop:py-1.5 rounded-lg border text-[11px] desktop:text-sm font-bold hud-text-shadow text-center max-w-[230px] desktop:max-w-md truncate ${notifStyle}`}
+              style={{ backgroundColor: notifBg }}
             >
-              <span>{tutorialText}</span>
-              {tutorialProgressText && (
-                <span className="ml-2 text-[#ffd15c] tabular-nums">{tutorialProgressText}</span>
-              )}
-            </div>
-          )}
-
-          {hud.suppressedCount > 0 && (
-            <div
-              data-testid="devourer-alert"
-              className="px-3.5 py-1 rounded-lg border border-[#ff4d9e]/75 text-xs font-extrabold text-[#ff9ec7] hud-text-shadow"
-              style={{ backgroundColor: 'rgba(66, 14, 42, 0.88)' }}
-            >
-              Dévoreur : {hud.suppressedCount} écho{hud.suppressedCount > 1 ? 's' : ''} drainé
-              {hud.suppressedCount > 1 ? 's' : ''} (-70%) !
-            </div>
-          )}
-
-          {hud.vaultOpen && (
-            <div
-              data-testid="vault-banner"
-              className="px-3.5 py-1 rounded-lg border border-[#ffd15c]/65 text-xs font-bold tabular-nums text-[#ffd15c] hud-text-shadow"
-              style={{ backgroundColor: 'rgba(34, 18, 48, 0.84)' }}
-            >
-              Sanctuaire ouvert · {hud.vaultTimer.toFixed(1)}s
-            </div>
-          )}
-
-          {echoBanner && (
-            <div
-              data-testid="echo-banner"
-              className={`px-4 py-1.5 rounded-lg border text-xs sm:text-sm font-bold hud-text-shadow ${
-                echoBanner.tone === 'discarded'
-                  ? 'border-[#e66b4c]/60 text-[#ffb199]'
-                  : 'border-[#38e8e1]/60 text-[#7df9f3]'
-              }`}
-              style={{ backgroundColor: 'rgba(30, 15, 42, 0.88)' }}
-            >
-              {echoBanner.text}
+              {activeNotification.text}
             </div>
           )}
         </div>
 
         {/* Top-Right: Echo Slots, Overload Toggle & Utility Controls (>= 48px touch targets) */}
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-1.5 desktop:gap-2 pointer-events-auto">
           <div
-            className="hidden sm:flex items-center gap-2 px-3 min-h-[48px] rounded-lg border border-[#38e8e1]/30 text-sm font-bold tabular-nums text-[#38e8e1]"
+            className="flex items-center px-2 desktop:px-3 min-h-[38px] desktop:min-h-[48px] rounded-lg border border-[#38e8e1]/30 text-[11px] desktop:text-sm font-bold tabular-nums text-[#38e8e1]"
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.78)' }}
           >
             <span data-testid="hud-echoes">
-              {echoCount}/{echoSlots} Échos
+              {echoCount}/{echoSlots}
+              <span className="hidden desktop:inline"> Échos</span>
             </span>
           </div>
 
@@ -334,15 +322,21 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 e.currentTarget.blur();
                 onToggleOverload();
               }}
-              className={`min-h-[48px] px-3 rounded-lg border font-bold text-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`min-h-[48px] px-2 desktop:px-3 rounded-lg border font-bold text-[11px] desktop:text-xs flex items-center gap-1 desktop:gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                 overloadArmed
                   ? 'border-[#ff7b3d] text-[#241230] bg-[#ff9b52]'
                   : 'border-[#f7efe6]/20 text-[#f7efe6] hover:border-[#ff7b3d]/70'
               }`}
               style={!overloadArmed ? { backgroundColor: 'rgba(34, 18, 48, 0.82)' } : undefined}
             >
-              <Flame className="w-4 h-4" />
-              <span>{hud.overloadActive ? `Surcharge ×${stats.overloadMultiplier.toFixed(1)}` : overloadArmed ? 'Armée' : 'Surcharge'}</span>
+              <Flame className="w-3.5 h-3.5 desktop:w-4 desktop:h-4" />
+              <span>
+                {hud.overloadActive
+                  ? `×${stats.overloadMultiplier.toFixed(1)}`
+                  : overloadArmed
+                    ? 'Armée'
+                    : 'Surcharge'}
+              </span>
             </button>
           )}
 
@@ -357,7 +351,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             className="w-12 h-12 flex items-center justify-center rounded-lg border border-[#f7efe6]/20 text-[#f7efe6] hover:border-[#ffd15c]/60 cursor-pointer"
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.82)' }}
           >
-            {muted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            {muted ? (
+              <VolumeX className="w-4 h-4 desktop:w-5 desktop:h-5" />
+            ) : (
+              <Volume2 className="w-4 h-4 desktop:w-5 desktop:h-5" />
+            )}
           </button>
 
           <button
@@ -371,7 +369,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             className="w-12 h-12 flex items-center justify-center rounded-lg border border-[#f7efe6]/20 text-[#f7efe6] hover:border-[#ffd15c]/60 cursor-pointer"
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.82)' }}
           >
-            <Pause className="w-5 h-5" />
+            <Pause className="w-4 h-4 desktop:w-5 desktop:h-5" />
           </button>
         </div>
       </div>
@@ -445,10 +443,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
         </div>
       )}
 
-      {/* Center Reticle + Loop Timer Ring + Hitmarker + Combo */}
+      {/* Center Reticle + Loop Timer Ring + Hitmarker + Combo ONLY */}
       <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex flex-col items-center">
-        <div className="relative w-16 h-16 flex items-center justify-center">
-          <svg viewBox="0 0 60 60" className="w-16 h-16 -rotate-90" aria-hidden="true">
+        <div className="relative w-13 h-13 desktop:w-16 desktop:h-16 flex items-center justify-center">
+          <svg viewBox="0 0 60 60" className="w-13 h-13 desktop:w-16 desktop:h-16 -rotate-90" aria-hidden="true">
             <circle
               cx="30"
               cy="30"
@@ -472,14 +470,14 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
           {/* Precision Center Dot */}
           <div
-            className={`absolute w-2 h-2 rounded-full transition-transform duration-75 ${
+            className={`absolute w-1.5 h-1.5 desktop:w-2 desktop:h-2 rounded-full transition-transform duration-75 ${
               hud.aimingAtGeode ? 'bg-[#ffd15c] scale-125' : 'bg-[#f7efe6]'
             }`}
           />
 
           {/* Hitmarker Cross */}
           {hitMarker !== 'none' && (
-            <svg viewBox="0 0 32 32" className="absolute w-7 h-7" aria-hidden="true">
+            <svg viewBox="0 0 32 32" className="absolute w-6 h-6 desktop:w-7 desktop:h-7" aria-hidden="true">
               <path
                 d="M7 7 L12 12 M25 7 L20 12 M7 25 L12 20 M25 25 L20 20"
                 stroke={hitMarker === 'crit' ? '#ffd15c' : '#ffffff'}
@@ -492,13 +490,13 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
         <div
           data-testid="hud-timer"
-          className="mt-0.5 text-[11px] font-bold tabular-nums text-[#f7efe6]/90 hud-text-shadow"
+          className="mt-0.5 text-[10px] desktop:text-[11px] font-bold tabular-nums text-[#f7efe6]/90 hud-text-shadow"
         >
           {remaining.toFixed(1)}s
         </div>
 
         {hud.combo >= 2 && (
-          <div className="mt-1 text-xs font-extrabold tracking-wider text-[#ffd15c] tabular-nums hud-text-shadow">
+          <div className="mt-0.5 desktop:mt-1 text-[11px] desktop:text-xs font-extrabold tracking-wider text-[#ffd15c] tabular-nums hud-text-shadow">
             COMBO ×{hud.combo}
           </div>
         )}
@@ -506,30 +504,30 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* Ghost Hands First-Time Onboarding Cue */}
       {showGhostHands && (
-        <div className="fixed inset-x-0 bottom-20 flex items-center justify-between px-10 sm:px-20 pointer-events-none">
-          <div className="flex flex-col items-center gap-1.5 ghost-thumb-anim">
+        <div className="fixed inset-x-0 bottom-16 desktop:bottom-20 flex items-center justify-between px-8 desktop:px-20 pointer-events-none">
+          <div className="flex flex-col items-center gap-1 ghost-thumb-anim">
             <div
-              className="w-12 h-12 rounded-full border-2 border-[#38e8e1] flex items-center justify-center text-xs font-bold text-[#38e8e1]"
+              className="w-10 h-10 desktop:w-12 desktop:h-12 rounded-full border-2 border-[#38e8e1] flex items-center justify-center text-[11px] desktop:text-xs font-bold text-[#38e8e1]"
               style={{ backgroundColor: 'rgba(34, 18, 48, 0.72)' }}
             >
               G
             </div>
             <span
-              className="px-2 py-0.5 rounded text-xs font-bold text-[#f7efe6]"
+              className="px-1.5 py-0.5 rounded text-[10px] desktop:text-xs font-bold text-[#f7efe6]"
               style={{ backgroundColor: 'rgba(34, 18, 48, 0.72)' }}
             >
               Glisser · Déplacer
             </span>
           </div>
-          <div className="flex flex-col items-center gap-1.5 ghost-thumb-anim">
+          <div className="flex flex-col items-center gap-1 ghost-thumb-anim">
             <div
-              className="w-12 h-12 rounded-full border-2 border-[#ffd15c] flex items-center justify-center text-xs font-bold text-[#ffd15c]"
+              className="w-10 h-10 desktop:w-12 desktop:h-12 rounded-full border-2 border-[#ffd15c] flex items-center justify-center text-[11px] desktop:text-xs font-bold text-[#ffd15c]"
               style={{ backgroundColor: 'rgba(34, 18, 48, 0.72)' }}
             >
               D
             </div>
             <span
-              className="px-2 py-0.5 rounded text-xs font-bold text-[#f7efe6]"
+              className="px-1.5 py-0.5 rounded text-[10px] desktop:text-xs font-bold text-[#f7efe6]"
               style={{ backgroundColor: 'rgba(34, 18, 48, 0.72)' }}
             >
               Glisser · Viser
@@ -542,7 +540,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       {joystick.active && (
         <div className="fixed inset-0 pointer-events-none">
           <div
-            className="fixed w-28 h-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#38e8e1]/55"
+            className="fixed w-24 h-24 desktop:w-28 desktop:h-28 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#38e8e1]/55"
             style={{
               left: `${joystick.originX}px`,
               top: `${joystick.originY}px`,
@@ -550,7 +548,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             }}
           />
           <div
-            className="fixed w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#38e8e1]/75 border border-white/60"
+            className="fixed w-10 h-10 desktop:w-12 desktop:h-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#38e8e1]/75 border border-white/60"
             style={{ left: `${joystick.knobX}px`, top: `${joystick.knobY}px` }}
           />
         </div>
@@ -558,10 +556,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
       {/* Bottom-Right Action Buttons (>= 48px Touch Targets, Safe Area Respected) */}
       <div
-        className="fixed flex items-end gap-3 pointer-events-auto"
+        className="fixed flex items-end gap-2 desktop:gap-3 pointer-events-auto"
         style={{
-          right: 'max(18px, env(safe-area-inset-right))',
-          bottom: 'max(18px, env(safe-area-inset-bottom))',
+          right: 'max(12px, env(safe-area-inset-right))',
+          bottom: 'max(12px, env(safe-area-inset-bottom))',
         }}
       >
         {hud.nearTerminal && (
@@ -578,9 +576,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               e.stopPropagation();
               onInteract();
             }}
-            className="min-h-[56px] px-4 rounded-xl border-2 border-[#38e8e1] text-[#241230] bg-[#38e8e1] hover:bg-[#7df9f3] font-bold text-sm flex items-center gap-2 cursor-pointer shadow-[0_4px_20px_rgba(56,232,225,0.4)] whitespace-nowrap shrink-0"
+            className="min-h-[48px] px-3 desktop:min-h-[56px] desktop:px-4 rounded-xl border-2 border-[#38e8e1] text-[#241230] bg-[#38e8e1] hover:bg-[#7df9f3] font-bold text-xs desktop:text-sm flex items-center gap-1.5 desktop:gap-2 cursor-pointer shadow-[0_4px_20px_rgba(56,232,225,0.4)] whitespace-nowrap shrink-0"
           >
-            <Terminal className="w-5 h-5" />
+            <Terminal className="w-4 h-4 desktop:w-5 desktop:h-5" />
             <span>Terminal [E]</span>
           </button>
         )}
@@ -599,15 +597,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               e.stopPropagation();
               onDash();
             }}
-            className={`min-w-[56px] min-h-[56px] px-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-transform tabular-nums ${
+            className={`min-w-[48px] min-h-[48px] px-2.5 desktop:min-w-[56px] desktop:min-h-[56px] desktop:px-3.5 rounded-xl border font-bold text-xs desktop:text-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-transform tabular-nums ${
               hud.dashCooldownRemaining <= 0.05
                 ? 'border-[#38e8e1] text-[#7df9f3]'
                 : 'border-[#f7efe6]/20 text-[#f7efe6]/50'
             }`}
             style={{ backgroundColor: 'rgba(34, 18, 48, 0.86)' }}
           >
-            <Wind className="w-5 h-5" />
-            <span className="hidden sm:inline">
+            <Wind className="w-4 h-4 desktop:w-5 desktop:h-5" />
+            <span className="hidden desktop:inline">
               {hud.dashCooldownRemaining <= 0.05
                 ? 'Dash [Shift]'
                 : `${hud.dashCooldownRemaining.toFixed(1)}s`}
@@ -628,11 +626,11 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             e.stopPropagation();
             onJump();
           }}
-          className="min-w-[56px] min-h-[56px] px-4 rounded-xl border border-[#ffd15c]/50 text-[#f7efe6] font-bold text-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
+          className="min-w-[48px] min-h-[48px] px-3 desktop:min-w-[56px] desktop:min-h-[56px] desktop:px-4 rounded-xl border border-[#ffd15c]/50 text-[#f7efe6] font-bold text-xs desktop:text-sm flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-transform"
           style={{ backgroundColor: 'rgba(34, 18, 48, 0.85)' }}
         >
-          <ArrowUp className="w-5 h-5 text-[#ffd15c]" />
-          <span className="hidden sm:inline">Sauter</span>
+          <ArrowUp className="w-4 h-4 desktop:w-5 desktop:h-5 text-[#ffd15c]" />
+          <span className="hidden desktop:inline">Sauter</span>
         </button>
       </div>
     </div>

@@ -35,6 +35,12 @@ import { TerminalModal } from './components/TerminalModal';
 import { PauseModal } from './components/PauseModal';
 import { OfflineModal } from './components/OfflineModal';
 import { PortraitGuard } from './components/PortraitGuard';
+import {
+  advanceNotificationQueue,
+  createNotificationQueueState,
+  EnqueueInput,
+  enqueueNotification,
+} from './game/notifications';
 
 type ScreenState = 'title' | 'playing' | 'terminal' | 'paused';
 
@@ -95,10 +101,11 @@ export default function App() {
   const [popups, setPopups] = useState<FloatingPopupEvent[]>([]);
   const [hitMarker, setHitMarker] = useState<'none' | 'hit' | 'crit'>('none');
   const [loopFlash, setLoopFlash] = useState(false);
-  const [echoBanner, setEchoBanner] = useState<{
-    text: string;
-    tone: 'added' | 'replaced' | 'discarded';
-  } | null>(null);
+  const [notifQueue, setNotifQueue] = useState(createNotificationQueueState);
+  const prevSuppressedCountRef = useRef(0);
+  const pushNotification = useCallback((input: EnqueueInput) => {
+    setNotifQueue((q) => enqueueNotification(q, input, performance.now()));
+  }, []);
   const [joystick, setJoystick] = useState<JoystickVisualState>({
     active: false,
     originX: 0,
@@ -125,6 +132,16 @@ export default function App() {
     () => getTotalEchoesRate(save.echoes, stats, suppressedSet),
     [save.echoes, stats, suppressedSet],
   );
+
+  // Advance single top-center notification queue every 2s
+  useEffect(() => {
+    if (!notifQueue.active) return;
+    const delay = Math.max(20, notifQueue.active.expiresAt - performance.now());
+    const t = window.setTimeout(() => {
+      setNotifQueue((q) => advanceNotificationQueue(q, performance.now()));
+    }, delay);
+    return () => clearTimeout(t);
+  }, [notifQueue.active]);
 
   // Sync body dataset.state for game shell discipline
   useEffect(() => {
@@ -246,8 +263,13 @@ export default function App() {
           setSave((prev) => {
             const currStats = computeStats(prev.upgrades, prev.temporalFragments, prev.perks);
             const result = evaluateNewEcho(prev.echoes, record, currStats);
-            setEchoBanner({ text: result.message, tone: result.status });
-            window.setTimeout(() => setEchoBanner(null), 4200);
+            pushNotification({
+              dedupeKey: 'echo',
+              text: result.message,
+              tone: result.status === 'discarded' ? 'coral' : 'cyan',
+              priority: 3,
+              cooldownMs: 0,
+            });
 
             let nextTut: TutorialStepId = prev.tutorialStep;
             if (prev.tutorialStep === 'finish_loop' || prev.tutorialStep === 'break_5_geodes') {
@@ -303,7 +325,14 @@ export default function App() {
             });
           }
         },
-        onRelayShot: () => {
+        onRelayShot: (multiplier) => {
+          pushNotification({
+            dedupeKey: 'relay',
+            text: `Relais ×${multiplier.toFixed(1)}`,
+            tone: 'gold',
+            priority: 1,
+            cooldownMs: 10000,
+          });
           setSave((prev) => {
             if (prev.tutorialStep !== 'relay_shot') return prev;
             const next = { ...prev, tutorialStep: 'twin_geode' as TutorialStepId };
@@ -311,7 +340,14 @@ export default function App() {
             return next;
           });
         },
-        onTwinSynced: () => {
+        onTwinSynced: (multiplier) => {
+          pushNotification({
+            dedupeKey: 'twin',
+            text: `Synchro Jumelle ×${multiplier.toFixed(1)}`,
+            tone: 'gold',
+            priority: 3,
+            cooldownMs: 3000,
+          });
           setSave((prev) => {
             if (prev.tutorialStep !== 'twin_geode' && prev.tutorialStep !== 'relay_shot') return prev;
             const next = { ...prev, tutorialStep: 'switch_vault' as TutorialStepId };
@@ -319,7 +355,16 @@ export default function App() {
             return next;
           });
         },
-        onSwitchActivated: (byEcho) => {
+        onSwitchActivated: (byEcho, justOpened) => {
+          if (justOpened) {
+            pushNotification({
+              dedupeKey: 'vault',
+              text: 'Sanctuaire ouvert',
+              tone: 'gold',
+              priority: 2,
+              cooldownMs: 4000,
+            });
+          }
           setSave((prev) => {
             if (prev.tutorialStep !== 'switch_vault') return prev;
             if (!byEcho && prev.echoes.length === 0) return prev;
@@ -329,6 +374,13 @@ export default function App() {
           });
         },
         onDevourerSlain: () => {
+          pushNotification({
+            dedupeKey: 'devourer_slain',
+            text: 'Dévoreur éliminé',
+            tone: 'cyan',
+            priority: 2,
+            cooldownMs: 4000,
+          });
           setSave((prev) => {
             if (prev.tutorialStep !== 'defeat_devourer') return prev;
             const next = { ...prev, tutorialStep: 'reach_prestige' as TutorialStepId };
@@ -336,7 +388,26 @@ export default function App() {
             return next;
           });
         },
+        onConvergence: () => {
+          pushNotification({
+            dedupeKey: 'convergence',
+            text: 'Convergence · Dash prêt',
+            tone: 'cyan',
+            priority: 2,
+            cooldownMs: 6000,
+          });
+        },
         onSuppressedChange: (ids) => {
+          if (ids.length > 0 && prevSuppressedCountRef.current === 0) {
+            pushNotification({
+              dedupeKey: 'devourer',
+              text: 'Dévoreur sur tes échos (-70%)',
+              tone: 'crimson',
+              priority: 3,
+              cooldownMs: 5000,
+            });
+          }
+          prevSuppressedCountRef.current = ids.length;
           setSuppressedIds(ids);
         },
       },
@@ -351,7 +422,7 @@ export default function App() {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [autostart, flushPendingShards]);
+  }, [autostart, flushPendingShards, pushNotification]);
 
   const startPlaying = useCallback(() => {
     soundRef.current?.unlock();
@@ -508,7 +579,7 @@ export default function App() {
           prestigeMult={stats.prestigeMult}
           tutorialStep={save.tutorialStep}
           tutorialProgressText={tutorialProgressText}
-          echoBanner={echoBanner}
+          activeNotification={notifQueue.active}
           hud={hud}
           popups={popups}
           hitMarker={hitMarker}

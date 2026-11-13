@@ -1,4 +1,15 @@
 @import "tailwindcss";
+@custom-variant desktop (@media (min-width: 960px) and (min-height: 540px));
+
+.hud-safe-inset {
+  padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+
+@media (min-width: 960px) and (min-height: 540px) {
+  .hud-safe-inset {
+    padding: max(14px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  }
+}
 
 @layer base {
   html,

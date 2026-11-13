@@ -1,5 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import {
+  advanceNotificationQueue,
+  createNotificationQueueState,
+  enqueueNotification,
+  NOTIFICATION_DURATION_MS,
+} from './notifications';
 import {
   computeOfflineEarnings,
   computePrestigePotential,
@@ -161,3 +169,74 @@ test('economy simulation verifies all balancing rules pass', () => {
   );
   assert.ok(report.postPrestigeSpeedup >= 2.0);
 });
+
+test('assetlinks.json exists with exact TWA package and SHA256 fingerprint', () => {
+  const filePath = path.resolve(process.cwd(), 'public/.well-known/assetlinks.json');
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const parsed = JSON.parse(raw);
+  assert.equal(Array.isArray(parsed), true);
+  assert.equal(parsed.length, 1);
+  assert.deepEqual(parsed[0].relation, ['delegate_permission/common.handle_all_urls']);
+  assert.equal(parsed[0].target.namespace, 'android_app');
+  assert.equal(parsed[0].target.package_name, 'app.vercel.echo_ten_wheat.twa');
+  assert.deepEqual(parsed[0].target.sha256_cert_fingerprints, [
+    '63:8F:11:21:B3:79:3F:AE:EF:E4:F5:4E:AB:17:05:E2:A8:20:67:A2:CD:DB:3C:9F:DF:14:66:41:CB:CA:2A:27',
+  ]);
+});
+
+test('notification queue shows 1 item for 2s, deduplicates, and ignores low-priority overlap', () => {
+  let q = createNotificationQueueState();
+  q = enqueueNotification(q, {
+    dedupeKey: 'vault',
+    text: 'Sanctuaire ouvert',
+    tone: 'gold',
+    priority: 2,
+    cooldownMs: 4000,
+  }, 1000);
+  assert.equal(q.active?.text, 'Sanctuaire ouvert');
+  assert.equal(q.active?.expiresAt, 1000 + NOTIFICATION_DURATION_MS);
+
+  // Duplicate while active is ignored
+  q = enqueueNotification(q, {
+    dedupeKey: 'vault',
+    text: 'Sanctuaire ouvert',
+    tone: 'gold',
+    priority: 2,
+    cooldownMs: 4000,
+  }, 1200);
+  assert.equal(q.pending.length, 0);
+
+  // Low-priority relay while active is ignored
+  q = enqueueNotification(q, {
+    dedupeKey: 'relay',
+    text: 'Relais ×2.5',
+    tone: 'gold',
+    priority: 1,
+    cooldownMs: 10000,
+  }, 1400);
+  assert.equal(q.pending.length, 0);
+
+  // High-priority echo result queues behind active
+  q = enqueueNotification(q, {
+    dedupeKey: 'echo',
+    text: 'Nouvel écho : +12/s',
+    tone: 'cyan',
+    priority: 3,
+    cooldownMs: 0,
+  }, 1500);
+  assert.equal(q.pending.length, 1);
+
+  // Before 2000ms elapsed, active does not advance
+  q = advanceNotificationQueue(q, 2900);
+  assert.equal(q.active?.text, 'Sanctuaire ouvert');
+
+  // At 3000ms (1000 + 2000), advances to queued echo
+  q = advanceNotificationQueue(q, 3000);
+  assert.equal(q.active?.text, 'Nouvel écho : +12/s');
+  assert.equal(q.pending.length, 0);
+
+  // At 5000ms (3000 + 2000), clears completely
+  q = advanceNotificationQueue(q, 5000);
+  assert.equal(q.active, null);
+});
+
