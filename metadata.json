@@ -1,0 +1,6 @@
+{
+  "name": "ÉCHO — Boucle Temporelle 3D",
+  "description": "Jeu FPS incrémental 3D en boucles de 12 secondes. Brise des géodes, enregistre tes échos fantômes et accumule des éclats.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
